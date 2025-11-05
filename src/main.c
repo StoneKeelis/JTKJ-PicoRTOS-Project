@@ -59,6 +59,7 @@ static void sensor_task(void *arg){
         uint32_t sensorValue = veml6030_read_light();
         printf("Luminance: %lu lux\n", sensorValue);
         // moi
+        // terve atte
 
         // Tehtävä 3:  Muokkaa aiemmin Tehtävässä 2 tehtyä koodia ylempänä.
         //             Jos olet oikeassa tilassa, tallenna anturin arvo tulostamisen sijaan
