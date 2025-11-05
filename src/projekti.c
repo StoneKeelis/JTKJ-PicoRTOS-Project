@@ -17,7 +17,7 @@
 #define DEFAULT_STACK_SIZE 2048
 #define CDC_ITF_TX      1
 
-
+// ashdahdhdhshas
 // Tehtävä 3: Tilakoneen esittely Add missing states.
 // Exercise 3: Definition of the state machine. Add missing states.
 enum state { WAITING=1};
@@ -160,7 +160,7 @@ int main() {
     /*while (!stdio_usb_connected()){
         sleep_ms(10);
     }*/ 
-    // Initialize the hat SDK
+    
     init_hat_sdk();
     sleep_ms(300); //Wait some time so initialization of USB and hat is done.
     
