@@ -160,7 +160,7 @@ int main() {
     /*while (!stdio_usb_connected()){
         sleep_ms(10);
     }*/ 
-    
+    // Initialize the hat SDK
     init_hat_sdk();
     sleep_ms(300); //Wait some time so initialization of USB and hat is done.
     
