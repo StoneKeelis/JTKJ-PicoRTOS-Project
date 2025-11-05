@@ -17,7 +17,6 @@
 #define DEFAULT_STACK_SIZE 2048
 #define CDC_ITF_TX      1
 
-// ashdahdhdhshas
 // Tehtävä 3: Tilakoneen esittely Add missing states.
 // Exercise 3: Definition of the state machine. Add missing states.
 enum state { WAITING=1};
