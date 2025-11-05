@@ -1,7 +1,6 @@
 
 #include <stdio.h>
 #include <string.h>
-
 #include <pico/stdlib.h>
 
 #include <FreeRTOS.h>
@@ -29,6 +28,10 @@ enum state programState = WAITING;
 uint32_t ambientLight;
 
 static void btn_fxn(uint gpio, uint32_t eventMask) {
+    uint8_t pinValue = gpio_get(LED1);
+    pinValue = !pinValue;
+    gpio_put(LED1, pinValue);
+    toggle_led();
     // Tehtävä 1: Vaihda LEDin tila.
     //            Tarkista SDK, ja jos et löydä vastaavaa funktiota, sinun täytyy toteuttaa se itse.
     // Exercise 1: Toggle the LED. 
@@ -46,10 +49,15 @@ static void sensor_task(void *arg){
         //             
         // Exercise 2: Modify with application code here. Comment following line.
         //             Read sensor data and print it out as string; 
-        tight_loop_contents(); 
+        //tight_loop_contents(); 
 
 
-   
+        // Tehtävä 2: Lue valoisuusanturin arvo ja tulosta se debug-ikkunaan.
+        //            Etsi SDK-dokumentaatiosta sopiva funktio.
+        // Exercise 2: Read the value of the light sensor and print it out to debug window.
+        //             Find in the SDK documentation the adequate function.
+        uint32_t sensorValue = veml6030_read_light();
+        printf("Luminance: %lu lux\n", sensorValue);
 
 
         // Tehtävä 3:  Muokkaa aiemmin Tehtävässä 2 tehtyä koodia ylempänä.
@@ -155,6 +163,13 @@ int main() {
     init_hat_sdk();
     sleep_ms(300); //Wait some time so initialization of USB and hat is done.
 
+    gpio_init(BUTTON1);
+    gpio_set_dir(BUTTON1, GPIO_IN);
+    
+    gpio_init(LED1);
+    gpio_set_dir(LED1, GPIO_OUT);
+
+    gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_FALL, true, btn_fxn);
     // Exercise 1: Initialize the button and the led and define an register the corresponding interrupton.
     //             Interruption handler is defined up as btn_fxn
     // Tehtävä 1:  Alusta painike ja LEd ja rekisteröi vastaava keskeytys.
