@@ -744,7 +744,9 @@ float aRes, gRes;      // scale resolutions per LSB for the sensors
 
 static int icm_i2c_write_byte(uint8_t reg, uint8_t value) {
     uint8_t buf[2] = { reg, value };
+    //printf("Before writing to i2c reg:0x%x, val:0x%x\n", reg, value);
     int result = i2c_write_blocking(i2c_default, ICM42670_I2C_ADDRESS, buf, 2, false);
+    //printf("After writing to i2c. Result: %d\n",result);
     return result == 2 ? 0 : -1;
 }
 
@@ -765,9 +767,21 @@ static int icm_i2c_read_bytes(uint8_t reg, uint8_t *buffer, uint8_t len) {
 
 static int icm_soft_reset(void) {
     int rc = icm_i2c_write_byte(ICM42670_REG_SIGNAL_PATH_RESET, ICM42670_RESET_CONFIG_BITS);
-    sleep_us(400);   // small wait: datasheet calls for ~200 µs before other writes
-    //TODO: For making more robust. Wait till the MCKL_READY is on (clock is running again)
-    return rc;
+    if (rc != 0) 
+        return -1;
+    busy_wait_us(400);   // small wait: datasheet calls for ~200 µs before other writes
+    //Wait till the MCKL_READY is on (clock is running again)
+        // 2) Poll MCLK_RDY (Bank0 @ 0x00, bit3) with a short timeout
+    for (int i = 0; i < 100; ++i) {           // ~5 ms total @ 50 µs step
+        uint8_t v = 0;
+        if (icm_i2c_read_byte(0x00, &v) == 0 && (v & (1u << 3))) {
+            // 3) Give the spec'd settling gap before next writes
+            busy_wait_us(200);
+            return 0;
+        }
+        busy_wait_us(50);
+    }
+    return -2;
 }
 
 //TRY TO SOLVE PROBLEM OF FLOATING AD0 pin, JUST IN CASE THE ADDRESS IS CHANGING. 
@@ -798,11 +812,11 @@ static void calibrateGyro(float *dest2){
 }
 
 int init_ICM42670() {
-    blink_led(5);
+    
     
     //Soft reset
     icm_soft_reset();
-
+    
     //DETECT ADDRESS FOR AD0 floating pin: 
     int address = ICM42670_autodetect_address();
     if (address == -1){
@@ -820,13 +834,15 @@ int init_ICM42670() {
     };   
 
     // Step 2: Configure INT1 pin - push-pull, active-low, pulsed
-    if(icm_i2c_write_byte(ICM42670_INT_CONFIG, ICM42670_INT1_CONFIG_VALUE) != 0){ 
+    // TODO: it breaks the sensor. After this instruction, it blocks the following write. Only happens after cold power-on. Working when flashing.  
+    /*if(icm_i2c_write_byte(ICM42670_INT_CONFIG, ICM42670_INT1_CONFIG_VALUE) != 0){ 
         return -4;
-    }
+    }*/
     // tiny guard delay after init writes
-    sleep_us(200);
+    busy_wait_us(400);
     
     // Step 3: Success
+    blink_led(2);
     return 0;
 }
 
@@ -870,7 +886,7 @@ int ICM42670_startAccel(uint16_t odr_hz, uint16_t fsr_g) {
     // Combine into ACCEL_CONFIG0: [7:5] = fsr, [3:0] = odr
     uint8_t accel_config0_val = (fsr_bits << 5) | (odr_bits & 0x0F);
     int rc = icm_i2c_write_byte(ICM42670_ACCEL_CONFIG0_REG, accel_config0_val);
-    sleep_us(200); 
+    busy_wait_us(400); 
     if (rc != 0) return -3;
     return 0; // success
 }
@@ -915,14 +931,14 @@ int ICM42670_startGyro(uint16_t odr_hz, uint16_t fsr_dps) {
     // Write GYRO_CONFIG0
     uint8_t gyro_config0_val = (fsr_bits << 5) | (odr_bits & 0x0F);
     if (icm_i2c_write_byte(ICM42670_GYRO_CONFIG0_REG, gyro_config0_val) != 0) return -3;
-    sleep_us(200); 
+    busy_wait_us(400); 
     return 0;
 }
 
 //put in low noise both acc and gyr
 int ICM42670_enable_accel_gyro_ln_mode() {
     int rc = icm_i2c_write_byte(ICM42670_PWR_MGMT0_REG , 0x0F); // bits 3:2 = gyro LN, bits 1:0 = accel LN
-    sleep_us(200);
+    busy_wait_us(400);
     return rc;
 }
 
@@ -931,7 +947,7 @@ int ICM42670_enable_ultra_low_power_mode(void) {
     // Accel = LP (10), Gyro = OFF (00)
     // PWR_MGMT0 = 0b00000010 = 0x02
     int rc = icm_i2c_write_byte(ICM42670_PWR_MGMT0_REG , 0x02);
-    sleep_us(200);
+    busy_wait_us(200);
     return rc;
 }
 
@@ -940,12 +956,16 @@ int ICM42670_enable_accel_gyro_lp_mode(void) {
     // Gyro = 10 (LP), Accel = 10 (LP)
     // 0b00001010 = 0x0A
     int rc = icm_i2c_write_byte(ICM42670_PWR_MGMT0_REG, 0x0A);
-    sleep_us(200);
+    busy_wait_us(200);
     return rc;
 }
 
 int ICM42670_start_with_default_values(void) {
     int rc;
+
+    // Put both sensors into Low-Noise mode
+    rc = ICM42670_enable_accel_gyro_ln_mode();
+    if (rc != 0) return rc;
 
     // Start accelerometer with defaults (e.g., 100 Hz, ±4 g)
     rc = ICM42670_startAccel(ICM42670_ACCEL_ODR_DEFAULT,
@@ -957,9 +977,6 @@ int ICM42670_start_with_default_values(void) {
                             ICM42670_GYRO_FSR_DEFAULT);
     if (rc != 0) return rc;
 
-    // Put both sensors into Low-Noise mode
-    rc = ICM42670_enable_accel_gyro_ln_mode();
-    if (rc != 0) return rc;
 
     return 0;
 }

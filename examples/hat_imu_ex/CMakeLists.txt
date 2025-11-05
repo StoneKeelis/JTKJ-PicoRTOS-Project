@@ -1,7 +1,7 @@
 # Remember to uncomment in the root CMakeLists.txt the corresponding add_subdirectory if you want to include this application in your project
 
 
-set(DEFAULT_TARGET hat_example)
+set(DEFAULT_TARGET hat_imu_ex)
 add_executable(${DEFAULT_TARGET}
   ${CMAKE_CURRENT_LIST_DIR}/src/main.c
 )

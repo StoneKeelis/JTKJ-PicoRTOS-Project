@@ -261,8 +261,12 @@ void led_task(void *pvParameters) {
 
 int main() {
     stdio_init_all();
-    sleep_ms(2000); //Wait to see the output.
+    // Uncomment this lines if you want to wait till the serial monitor is connected
+    while (!stdio_usb_connected()){
+        sleep_ms(10);
+    } 
     init_hat_sdk();
+    sleep_ms(300); //Wait some time so initialization of USB and hat is done.
     printf("Start tests\n");
     
     // Initialize LED
@@ -293,8 +297,8 @@ int main() {
 
    
     // Initialize I2C
-    init_i2c_default();
-    printf("Initializing the i2c\n");
+    //init_i2c_default();
+    //printf("Initializing the i2c\n");
 
     //Initialize Light Sesnsor VEML6030
     //veml6030_init();
@@ -314,6 +318,12 @@ int main() {
     //Initialize IMU
     if (init_ICM42670() == 0) {
         printf("ICM-42670P initialized successfully!\n");
+        int _gyro = ICM42670_startGyro(ICM42670_GYRO_ODR_DEFAULT, ICM42670_GYRO_FSR_DEFAULT);
+        printf ("Gyro return:  %d\n", _gyro);
+        int _accel = ICM42670_startAccel(ICM42670_ACCEL_ODR_DEFAULT, ICM42670_ACCEL_FSR_DEFAULT);
+        printf ("Accel return:  %d\n", _accel);
+
+        /*
         if (ICM42670_startAccel(ICM42670_ACCEL_ODR_DEFAULT, ICM42670_ACCEL_FSR_DEFAULT) != 0){
             printf("Wrong values to init the accelerometer in ICM-42670P.\n");
         }
@@ -321,6 +331,9 @@ int main() {
             printf("Wrong values to init the gyroscope in ICM-42670P.\n");
         };
         ICM42670_enable_accel_gyro_ln_mode();
+        */
+       int _enablegyro = ICM42670_enable_accel_gyro_ln_mode();
+       printf ("Enable gyro: %d\n",_enablegyro);
     } else {
         printf("Failed to initialize ICM-42670P.\n");
     }
