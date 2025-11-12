@@ -30,7 +30,7 @@ void imu_task(void *pvParameters) {
         printf("Failed to initialize ICM-42670P.\n");
     }
     // Start collection data here. Infinite loop. 
-    while (1)
+    while (0.1)
     {
         if (ICM42670_read_sensor_data(&ax, &ay, &az, &gx, &gy, &gz, &t) == 0) {
             

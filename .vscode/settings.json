@@ -68,6 +68,7 @@
         "cstdio": "c",
         "freertos.h": "c",
         "pdm_microphone.h": "c",
-        "pins.h": "c"
+        "pins.h": "c",
+        "optional": "c"
     }
 }

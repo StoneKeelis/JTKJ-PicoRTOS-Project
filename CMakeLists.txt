@@ -98,6 +98,8 @@ add_subdirectory(examples/hat_imu_ex)
 add_subdirectory(examples/hat_imu_cdc_ex)
 add_subdirectory(examples/hello_serial_client)
 add_subdirectory(examples/hello_serial_bidirectional_client)
+add_subdirectory(examples/imu_data_collector)
+add_subdirectory(examples/main_project)
 #
 # You can edit it if you want to add new examples
 # ==============================================================================================
