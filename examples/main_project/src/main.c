@@ -26,6 +26,19 @@ enum tilt_state {
     TILT_UNKNOWN = 3
 };
 
+// Tilaesittely
+enum state {
+    IDLE = 0,
+    RECORDING,
+    SENDING,
+    RECEIVING,
+    DISPLAY_UPDATE,
+};
+
+// Globaalit tilamuuttujat
+volatile enum state system_state = IDLE;
+
+
 // Globaaalit muuttujat
 enum tilt_state current_tilt = TILT_UNKNOWN;
 char message_buffer[MESSAGE_BUFFER_SIZE];
@@ -36,17 +49,21 @@ volatile uint32_t last_button_time = 0;
 // Yksittäinen interrupt handler joka reitittää molemmat napit
 static void button_handler(uint gpio, uint32_t events) {
     (void)events;
-    
+
     // debouncing ettei nappi rekisteröidy useasti
     uint32_t current_time = to_ms_since_boot(get_absolute_time());
     if (current_time - last_button_time < DEBOUNCE_MS) {
         return;
     }
     last_button_time = current_time;
-    
+
     if (gpio == BUTTON2) {
+        if (system_state == IDLE) {
+            system_state = RECORDING;
+        }
+
         // Vasen nappi = lisää symboli
-        if (message_index < MESSAGE_BUFFER_SIZE - 4) {
+        if (system_state == RECORDING && message_index < MESSAGE_BUFFER_SIZE - 4) {
             switch (current_tilt) {
                 case TILT_LEFT:
                     message_buffer[message_index++] = '.';
@@ -62,10 +79,14 @@ static void button_handler(uint gpio, uint32_t events) {
             }
             message_buffer[message_index] = '\0';
         }
-    } 
-    else if (gpio == BUTTON1) {
+        return;
+    }
+
+    if (gpio == BUTTON1 && system_state == RECORDING) {
         // Oikea nappi = lähetä viesti
-        if (message_index > 0) {
+        system_state = SENDING;
+
+        if (message_index > 0 && message_index < MESSAGE_BUFFER_SIZE - 3) {
             message_buffer[message_index++] = ' ';
             message_buffer[message_index++] = ' ';
             message_buffer[message_index++] = '\n';
@@ -76,6 +97,7 @@ static void button_handler(uint gpio, uint32_t events) {
             message_index = 0;
             message_buffer[0] = '\0';
         }
+        system_state = IDLE;
     }
 }
 
@@ -100,21 +122,53 @@ static void imu_task(void *pvParameters) {
     printf("IMU task running...\n");
     
     for (;;) {
-        if (ICM42670_read_sensor_data(&ax, &ay, &az, &gx, &gy, &gz, &t) == 0) {
-            // määritetään kaltevuus
-            if (ax < TILT_LEFT_THRESHOLD) {
-                current_tilt = TILT_LEFT;
-            } else if (ax > TILT_RIGHT_THRESHOLD) {
-                current_tilt = TILT_RIGHT;
+        if (system_state == RECORDING) {
+            if (ICM42670_read_sensor_data(&ax, &ay, &az, &gx, &gy, &gz, &t) == 0) {
+                // määritetään kaltevuus
+                if (ax < TILT_LEFT_THRESHOLD) {
+                    current_tilt = TILT_LEFT;
+                } else if (ax > TILT_RIGHT_THRESHOLD) {
+                    current_tilt = TILT_RIGHT;
+                } else {
+                    current_tilt = TILT_MIDDLE;
+                }
             } else {
-                current_tilt = TILT_MIDDLE;
+                printf("ERROR: Failed to read sensor\n");
             }
-        } else {
-            printf("ERROR: Failed to read sensor\n");
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
+
+static void receiver_task(void *pvParameters) {
+    while(1) {
+        int ch = getchar_timeout_us(0);
+
+        if (ch != PICO_ERROR_TIMEOUT) {
+            if (system_state == IDLE || system_state == RECEIVING) {
+                system_state = RECEIVING;
+
+                if (ch == '\n') {
+                    system_state = DISPLAY_UPDATE;
+                }
+            }
+        }
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+static void display_task(void *pvParameters) {
+    while (1) {
+        if (system_state == DISPLAY_UPDATE) {
+            clear_display();
+            write_text("Msg OK");
+            vTaskDelay(pdMS_TO_TICKS(2000));
+            system_state = IDLE;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
+
 
 int main() {
     stdio_init_all();
@@ -129,6 +183,10 @@ int main() {
     init_hat_sdk();
     sleep_ms(300);
     
+    init_display();
+    clear_display();
+    write_text("LCD is OK");
+
     // alusta message buffer
     message_buffer[0] = '\0';
     message_index = 0;
@@ -153,6 +211,30 @@ int main() {
         &hIMUTask // handle
     );
 
+    // Receiver taski
+    TaskHandle_t hReceiverTask = NULL;
+
+    BaseType_t result_r = xTaskCreate(
+        receiver_task, // taski funktio
+        "RECEIVER", // taski nimi
+        DEFAULT_STACK_SIZE, // stackin koko
+        NULL, // taski argumentit
+        2, // prioriteetti
+        &hReceiverTask // handle
+    );
+
+    // Display taski
+    TaskHandle_t hDisplayTask = NULL;
+
+    BaseType_t result_d = xTaskCreate(
+        display_task, // taski funktio
+        "DISPLAY", // taski nimi
+        DEFAULT_STACK_SIZE, // stackin koko
+        NULL, // taski argumentit
+        2, // prioriteetti
+        &hDisplayTask // handle
+    );
+
     /*
     // (en) We create a task
     BaseType_t result1 = xTaskCreate(
@@ -165,7 +247,7 @@ int main() {
     );
     */
     
-    if(result != pdPASS) {
+    if(result != pdPASS || result_r != pdPASS || result_d != pdPASS) {
         printf("Task creation failed\n");
         return 0;
     }
@@ -176,4 +258,3 @@ int main() {
     // Never reach this line.
     return 0;
 }
-
