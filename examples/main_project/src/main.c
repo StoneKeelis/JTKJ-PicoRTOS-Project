@@ -29,22 +29,33 @@ enum tilt_state {
 // Tilaesittely
 enum state {
     IDLE = 0,
-    RECORDING,
-    SENDING,
-    RECEIVING,
-    DISPLAY_UPDATE,
+    RECORDING = 1,
+    SENDING = 2,
+    RECEIVING = 3,
+    DISPLAY_UPDATE = 4,
 };
 
 // Globaalit tilamuuttujat
 volatile enum state system_state = IDLE;
 
-
 // Globaaalit muuttujat
-enum tilt_state current_tilt = TILT_UNKNOWN;
+volatile enum tilt_state current_tilt = TILT_UNKNOWN;
 char message_buffer[MESSAGE_BUFFER_SIZE];
-uint16_t message_index = 0;
+volatile uint16_t message_index = 0;
 volatile uint32_t last_button_time = 0;
 #define DEBOUNCE_MS 200
+#define WORD_LENGTH 4
+
+// Buffer vastaanotetuille viesteille
+char received_buffer[128];
+volatile uint16_t received_index = 0;
+
+/*
+Buffereihin käytetty chatgpt:n apua
+Promptilla: "Miten voin hyödyntää bufferia koodissa viestin käsittelyyn?"
+Koodia on muokattu aloittelijaystävällisemmäksi kasvattamalla indeksiä vasta bufferiin lisäämisen jälkeen
+sekä myös lisäämällä globaali muuttuja sanan pituudelle.
+*/
 
 // Yksittäinen interrupt handler joka reitittää molemmat napit
 static void button_handler(uint gpio, uint32_t events) {
@@ -58,21 +69,24 @@ static void button_handler(uint gpio, uint32_t events) {
     last_button_time = current_time;
 
     if (gpio == BUTTON2) {
+        // Vasen nappi = lisää symboli
         if (system_state == IDLE) {
             system_state = RECORDING;
         }
 
-        // Vasen nappi = lisää symboli
-        if (system_state == RECORDING && message_index < MESSAGE_BUFFER_SIZE - 4) {
+        if (system_state == RECORDING && message_index < MESSAGE_BUFFER_SIZE - WORD_LENGTH) {
             switch (current_tilt) {
                 case TILT_LEFT:
-                    message_buffer[message_index++] = '.';
+                    message_buffer[message_index] = '.';
+                    message_index++;
                     break;
                 case TILT_MIDDLE:
-                    message_buffer[message_index++] = ' ';
+                    message_buffer[message_index] = ' ';
+                    message_index++;
                     break;
                 case TILT_RIGHT:
-                    message_buffer[message_index++] = '-';
+                    message_buffer[message_index] = '-';
+                    message_index++;
                     break;
                 default:
                     break;
@@ -84,20 +98,20 @@ static void button_handler(uint gpio, uint32_t events) {
 
     if (gpio == BUTTON1 && system_state == RECORDING) {
         // Oikea nappi = lähetä viesti
-        system_state = SENDING;
-
+        
         if (message_index > 0 && message_index < MESSAGE_BUFFER_SIZE - 3) {
-            message_buffer[message_index++] = ' ';
-            message_buffer[message_index++] = ' ';
-            message_buffer[message_index++] = '\n';
+            message_buffer[message_index] = ' ';
+            message_index++;
+            message_buffer[message_index] = ' ';
+            message_index++;
+            message_buffer[message_index] = '\n';
+            message_index++;
             message_buffer[message_index] = '\0';
             
-            printf("%s", message_buffer);
-            
-            message_index = 0;
-            message_buffer[0] = '\0';
+            system_state = SENDING;
         }
-        system_state = IDLE;
+
+        //system_state = IDLE;
     }
 }
 
@@ -148,6 +162,14 @@ static void receiver_task(void *pvParameters) {
             if (system_state == IDLE || system_state == RECEIVING) {
                 system_state = RECEIVING;
 
+                // Lisää merkki bufferiin
+                if (received_index < 127 && ch != '\n') {
+                    received_buffer[received_index] = (char)ch;
+                    received_index++;
+                    received_buffer[received_index] = '\0';
+                }
+                
+                // Kun viesti on valmis, näytä se
                 if (ch == '\n') {
                     system_state = DISPLAY_UPDATE;
                 }
@@ -161,14 +183,55 @@ static void display_task(void *pvParameters) {
     while (1) {
         if (system_state == DISPLAY_UPDATE) {
             clear_display();
-            write_text("Msg OK");
-            vTaskDelay(pdMS_TO_TICKS(2000));
+            write_text(received_buffer);
+            
+            // Soita morse-koodi summerilla
+            int len = strlen(received_buffer);
+            for (int i = 0; i < len; i++) {
+                switch (received_buffer[i]) {
+                    case '.':
+                        buzzer_play_tone(1000, 100);
+                        sleep_ms(100);
+                        break;
+                    case '-':
+                        buzzer_play_tone(1000, 300);
+                        sleep_ms(100);
+                        break;
+                    case ' ':
+                        sleep_ms(700);
+                        break;
+                }
+            }
+            
+            // Anna aikaa lukea näyttö
+            vTaskDelay(pdMS_TO_TICKS(1500));
+            
+            // Tyhjennä receive buffer
+            received_index = 0;
+            received_buffer[0] = '\0';
+
             system_state = IDLE;
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
+static void sender_task(void *pvParameters) {
+    while (1) {
+        if (system_state == SENDING) {
+            printf("%s", message_buffer);
+            
+            message_index = 0;
+            message_buffer[0] = '\0';
+
+            clear_display();
+            write_text("Msg sent!");
+
+            system_state = IDLE;
+        }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+}
 
 int main() {
     stdio_init_all();
@@ -187,9 +250,14 @@ int main() {
     clear_display();
     write_text("LCD is OK");
 
-    // alusta message buffer
+    // alusta buzzer
+    init_buzzer();
+
+    // alusta bufferit
     message_buffer[0] = '\0';
     message_index = 0;
+    received_buffer[0] = '\0';
+    received_index = 0;
     
     // alusta napit
     init_button1();
@@ -207,7 +275,7 @@ int main() {
         "IMU", // taski nimi
         DEFAULT_STACK_SIZE, // stackin koko
         NULL, // taski argumentit
-        2, // prioriteetti
+        3, // prioriteetti
         &hIMUTask // handle
     );
 
@@ -233,6 +301,18 @@ int main() {
         NULL, // taski argumentit
         2, // prioriteetti
         &hDisplayTask // handle
+    );
+
+    // Sender taski
+    TaskHandle_t hSenderTask = NULL;
+
+    BaseType_t result_s = xTaskCreate(
+        sender_task, // taski funktio
+        "SENDER", // taski nimi
+        DEFAULT_STACK_SIZE, // stackin koko
+        NULL, // taski argumentit
+        2, // prioriteetti
+        &hSenderTask // handle
     );
 
     /*
