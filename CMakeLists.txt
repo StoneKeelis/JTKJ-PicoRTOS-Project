@@ -112,8 +112,8 @@ add_subdirectory(examples/main_project)
 # Add the source files to be compiled
 # If you add the headers in a different directory, you should use: target_include_directories
 add_executable(${MAIN_TARGET}
-    src/main.c
-    # src/template.c
+    # src/main.c
+    src/template.c
 )
 
 # Links. Add all libraries that application is using. It must at least use the pico_stdlib
