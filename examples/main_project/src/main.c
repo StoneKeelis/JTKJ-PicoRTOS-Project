@@ -35,7 +35,7 @@ enum state {
     DISPLAY_UPDATE,
 };
 
-// Globaalit tilamuuttujat
+
 volatile enum state system_state = IDLE;
 
 
