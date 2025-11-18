@@ -31,14 +31,14 @@ enum state programState = WAITING;
 uint32_t ambientLight;
 
 static void btn_fxn(uint gpio, uint32_t eventMask) {
-    uint8_t pinValue = gpio_get(LED1);
-    pinValue = !pinValue;
-    gpio_put(LED1, pinValue);
-    toggle_led();
+    (void)gpio;
+    (void)eventMask;
+    
     // Tehtävä 1: Vaihda LEDin tila.
     //            Tarkista SDK, ja jos et löydä vastaavaa funktiota, sinun täytyy toteuttaa se itse.
     // Exercise 1: Toggle the LED. 
-    //             Check the SDK and if you do not find a function you would need to implement it yourself. 
+    //             Check the SDK and if you do not find a function you would need to implement it yourself.
+    toggle_led();
 }
 
 static void sensor_task(void *arg){
@@ -164,20 +164,22 @@ int main() {
     stdio_init_all();
 
     // Uncomment this lines if you want to wait till the serial monitor is connected
-    /*while (!stdio_usb_connected()){
+    while (!stdio_usb_connected()){
         sleep_ms(10);
-    }*/ 
+    }
     
     init_hat_sdk();
     sleep_ms(300); //Wait some time so initialization of USB and hat is done.
 
-    gpio_init(BUTTON1);
-    gpio_set_dir(BUTTON1, GPIO_IN);
+    // Alusta LED SDK:n funktiolla
+    init_led();
     
-    gpio_init(LED1);
-    gpio_set_dir(LED1, GPIO_OUT);
+    // Alusta nappi
+    init_button1();
 
+    // Rekisteröi interrupt
     gpio_set_irq_enabled_with_callback(BUTTON1, GPIO_IRQ_EDGE_FALL, true, btn_fxn);
+    
     // Exercise 1: Initialize the button and the led and define an register the corresponding interrupton.
     //             Interruption handler is defined up as btn_fxn
     // Tehtävä 1:  Alusta painike ja LEd ja rekisteröi vastaava keskeytys.
