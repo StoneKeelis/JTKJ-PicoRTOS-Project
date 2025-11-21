@@ -99,7 +99,7 @@ static void button_handler(uint gpio, uint32_t events) {
     if (gpio == BUTTON1 && system_state == RECORDING) {
         // Oikea nappi = lähetä viesti
         
-        if (message_index > 0 && message_index < MESSAGE_BUFFER_SIZE - 3) {
+        if (message_index > 0 && message_index < MESSAGE_BUFFER_SIZE - WORD_LENGTH) {
             message_buffer[message_index] = ' ';
             message_index++;
             message_buffer[message_index] = ' ';
@@ -211,6 +211,9 @@ static void display_task(void *pvParameters) {
             received_buffer[0] = '\0';
 
             system_state = IDLE;
+        } else if (system_state == IDLE) {
+            clear_display();
+            write_text("");
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
@@ -226,8 +229,9 @@ static void sender_task(void *pvParameters) {
 
             clear_display();
             write_text("Msg sent!");
-
+            vTaskDelay(pdMS_TO_TICKS(1000));
             system_state = IDLE;
+
         }
         vTaskDelay(pdMS_TO_TICKS(50));
     }
@@ -288,53 +292,3 @@ int main() {
         DEFAULT_STACK_SIZE, // stackin koko
         NULL, // taski argumentit
         2, // prioriteetti
-        &hReceiverTask // handle
-    );
-
-    // Display taski
-    TaskHandle_t hDisplayTask = NULL;
-
-    BaseType_t result_d = xTaskCreate(
-        display_task, // taski funktio
-        "DISPLAY", // taski nimi
-        DEFAULT_STACK_SIZE, // stackin koko
-        NULL, // taski argumentit
-        2, // prioriteetti
-        &hDisplayTask // handle
-    );
-
-    // Sender taski
-    TaskHandle_t hSenderTask = NULL;
-
-    BaseType_t result_s = xTaskCreate(
-        sender_task, // taski funktio
-        "SENDER", // taski nimi
-        DEFAULT_STACK_SIZE, // stackin koko
-        NULL, // taski argumentit
-        2, // prioriteetti
-        &hSenderTask // handle
-    );
-
-    /*
-    // (en) We create a task
-    BaseType_t result1 = xTaskCreate(
-        myTask1Fxn,  // (en) Task function
-        "MY_TASK1",  // (en) Name of the task
-        STACKSIZE,  // (en) Size of the stack for this task
-        (void *) 1, // (en) Arguments of the task
-        2,  // (en) Priority of this task
-        &myTaskHandle1 // (en) A handle to control the execution of this task
-    );
-    */
-    
-    if(result != pdPASS || result_r != pdPASS || result_d != pdPASS) {
-        printf("Task creation failed\n");
-        return 0;
-    }
- 
-    // Start the scheduler (never returns)
-    vTaskStartScheduler();
-
-    // Never reach this line.
-    return 0;
-}
