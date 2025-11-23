@@ -13,10 +13,13 @@
 // Default stack size for the tasks. It can be reduced to 1024 if task is not using lot of memory.
 #define DEFAULT_STACK_SIZE 2048
 #define MESSAGE_BUFFER_SIZE 2048
+#define RECEIVED_BUFFER_SIZE 128
 
 // Tilt thresholdit
 #define TILT_LEFT_THRESHOLD  -0.3f
 #define TILT_RIGHT_THRESHOLD  0.3f
+
+#define DEBOUNCE_MS 200
 
 // Tilt enumit
 enum tilt_state {
@@ -35,7 +38,7 @@ enum state {
     DISPLAY_UPDATE = 4,
 };
 
-
+// Globaalit tilamuuttujat
 volatile enum state system_state = IDLE;
 
 // Globaaalit muuttujat
@@ -43,11 +46,9 @@ volatile enum tilt_state current_tilt = TILT_UNKNOWN;
 char message_buffer[MESSAGE_BUFFER_SIZE];
 volatile uint16_t message_index = 0;
 volatile uint32_t last_button_time = 0;
-#define DEBOUNCE_MS 200
-#define WORD_LENGTH 4
 
 // Buffer vastaanotetuille viesteille
-char received_buffer[128];
+char received_buffer[RECEIVED_BUFFER_SIZE];
 volatile uint16_t received_index = 0;
 
 /*
@@ -74,7 +75,7 @@ static void button_handler(uint gpio, uint32_t events) {
             system_state = RECORDING;
         }
 
-        if (system_state == RECORDING && message_index < MESSAGE_BUFFER_SIZE - WORD_LENGTH) {
+        if (system_state == RECORDING && message_index < MESSAGE_BUFFER_SIZE - 4) {
             switch (current_tilt) {
                 case TILT_LEFT:
                     message_buffer[message_index] = '.';
@@ -96,22 +97,26 @@ static void button_handler(uint gpio, uint32_t events) {
         return;
     }
 
-    if (gpio == BUTTON1 && system_state == RECORDING) {
-        // Oikea nappi = lähetä viesti
-        
-        if (message_index > 0 && message_index < MESSAGE_BUFFER_SIZE - 3) {
-            message_buffer[message_index] = ' ';
-            message_index++;
-            message_buffer[message_index] = ' ';
-            message_index++;
-            message_buffer[message_index] = '\n';
-            message_index++;
-            message_buffer[message_index] = '\0';
-            
-            system_state = SENDING;
+    if (gpio == BUTTON1) {
+        if (system_state == RECORDING) {
+            // Oikea nappi = lähetä viesti
+            if (message_index > 0 && message_index < MESSAGE_BUFFER_SIZE - 3) {
+                message_buffer[message_index] = ' ';
+                message_index++;
+                message_buffer[message_index] = ' ';
+                message_index++;
+                message_buffer[message_index] = '\n';
+                message_index++;
+                message_buffer[message_index] = '\0';
+                
+                system_state = SENDING;
+            } else {
+                // Tyhjä viesti tai buffer täynnä - peru
+                message_index = 0;
+                message_buffer[0] = '\0';
+                system_state = IDLE;
+            }
         }
-
-        //system_state = IDLE;
     }
 }
 
@@ -136,7 +141,8 @@ static void imu_task(void *pvParameters) {
     printf("IMU task running...\n");
     
     for (;;) {
-        if (system_state == RECORDING) {
+        // Ei lueta sensorilta dataa kun näyttö päivittyy, voi johtaa määrittelemättömään käyttäytymiseen
+        if (system_state != DISPLAY_UPDATE && system_state != SENDING) {
             if (ICM42670_read_sensor_data(&ax, &ay, &az, &gx, &gy, &gz, &t) == 0) {
                 // määritetään kaltevuus
                 if (ax < TILT_LEFT_THRESHOLD) {
@@ -146,8 +152,6 @@ static void imu_task(void *pvParameters) {
                 } else {
                     current_tilt = TILT_MIDDLE;
                 }
-            } else {
-                printf("ERROR: Failed to read sensor\n");
             }
         }
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -162,16 +166,14 @@ static void receiver_task(void *pvParameters) {
             if (system_state == IDLE || system_state == RECEIVING) {
                 system_state = RECEIVING;
 
-                // Lisää merkki bufferiin
-                if (received_index < 127 && ch != '\n') {
+                // Jos viesti valmis, näytä se
+                if (ch == '\n') {
+                    system_state = DISPLAY_UPDATE;
+                } else if (received_index < RECEIVED_BUFFER_SIZE - 1) {
+                    // Muuten lisää merkki bufferiin
                     received_buffer[received_index] = (char)ch;
                     received_index++;
                     received_buffer[received_index] = '\0';
-                }
-                
-                // Kun viesti on valmis, näytä se
-                if (ch == '\n') {
-                    system_state = DISPLAY_UPDATE;
                 }
             }
         }
@@ -204,8 +206,12 @@ static void display_task(void *pvParameters) {
             }
             
             // Anna aikaa lukea näyttö
-            vTaskDelay(pdMS_TO_TICKS(1500));
+            vTaskDelay(pdMS_TO_TICKS(1300));
             
+            // Odota, että lcd päivittyy
+            clear_display();
+            vTaskDelay(pdMS_TO_TICKS(200));
+
             // Tyhjennä receive buffer
             received_index = 0;
             received_buffer[0] = '\0';
@@ -225,8 +231,13 @@ static void sender_task(void *pvParameters) {
             message_buffer[0] = '\0';
 
             clear_display();
+            buzzer_play_tone(200, 200);
             write_text("Msg sent!");
-
+            
+            vTaskDelay(pdMS_TO_TICKS(1500));
+            
+            clear_display();
+            
             system_state = IDLE;
         }
         vTaskDelay(pdMS_TO_TICKS(50));
@@ -327,7 +338,7 @@ int main() {
     );
     */
     
-    if(result != pdPASS || result_r != pdPASS || result_d != pdPASS) {
+    if(result != pdPASS || result_r != pdPASS || result_d != pdPASS || result_s != pdPASS) {
         printf("Task creation failed\n");
         return 0;
     }

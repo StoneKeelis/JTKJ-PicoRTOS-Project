@@ -23,7 +23,7 @@
             "command": "${env:HOME}/.pico-sdk/picotool/2.2.0/picotool/picotool",
             "args": [
                 "load",
-                "${workspaceFolder}/build/hat_app.elf",
+                "${workspaceFolder}/build/hat_app.uf2",
                 "-fx"
             ],
             "presentation": {
