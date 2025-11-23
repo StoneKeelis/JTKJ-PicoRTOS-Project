@@ -1,3 +1,5 @@
+// Tietokonejärjestelmät syksy 2025
+// Atte Suomela ja Eelis Kivilompolo
 
 #include <stdio.h>
 #include <string.h>
